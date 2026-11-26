@@ -23,9 +23,40 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [notice, setNotice] = useState("Demo workspace — connect your backend before using live services.");
   const [businessName, setBusinessName] = useState("Your business");
+const [session, setSession] = useState<any>(null);
+const [authLoading, setAuthLoading] = useState(true);
 
+useEffect(() => {
+  if (!supabase) {
+    setAuthLoading(false);
+    return;
+  }
+
+  supabase.auth.getSession().then(({ data }) => {
+    setSession(data.session);
+    setAuthLoading(false);
+  });
+
+  const { data: listener } = supabase.auth.onAuthStateChange(
+    (_event, session) => {
+      setSession(session);
+    }
+  );
+
+  return () => listener.subscription.unsubscribe();
+}, []);
   const connected = Boolean(supabase);
+if (authLoading) {
+  return <div style={{ padding: 40 }}>Loading...</div>;
+}
 
+if (!supabase) {
+  return <div style={{ padding: 40 }}>Supabase connection is missing. Please check your settings.</div>;
+}
+
+if (!session) {
+  return <AuthScreen />;
+}
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
@@ -156,3 +187,105 @@ function SettingsPage({ name, setName }: { name: string; setName: (v:string)=>vo
   </>;
 }
 export default App;
+function AuthScreen() {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!supabase) return;
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      if (mode === "register") {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+
+        setMessage("Registration successful. Check your email if confirmation is required.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      display: "grid",
+      placeItems: "center",
+      background: "#101827",
+      color: "white",
+      padding: "20px"
+    }}>
+      <form onSubmit={handleSubmit} style={{
+        width: "100%",
+        maxWidth: "400px",
+        padding: "30px",
+        background: "#1d2939",
+        borderRadius: "14px"
+      }}>
+        <h1>GALORTINC</h1>
+        <p>OTP NUMBERS</p>
+        <h2>{mode === "login" ? "Customer Login" : "Create Account"}</h2>
+
+        <label>Email address</label>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          style={{ width: "100%", padding: "12px", margin: "10px 0" }}
+        />
+
+        <label>Password</label>
+        <input
+          type="password"
+          required
+          minLength={6}
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          style={{ width: "100%", padding: "12px", margin: "10px 0" }}
+        />
+
+        <button
+          type="submit"
+          disabled={loading}
+          style={{ width: "100%", padding: "13px", marginTop: "15px" }}
+        >
+          {loading ? "Please wait..." : mode === "login" ? "Sign In" : "Register"}
+        </button>
+
+        {message && <p>{message}</p>}
+
+        <button
+          type="button"
+          onClick={() => {
+            setMode(mode === "login" ? "register" : "login");
+            setMessage("");
+          }}
+          style={{ marginTop: "15px" }}
+        >
+          {mode === "login"
+            ? "Create a new account"
+            : "Already have an account? Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
